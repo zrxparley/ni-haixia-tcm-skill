@@ -52,6 +52,59 @@ HIGH_RISK_FORMULAS = {
     "乌梅丸", "附子泻心汤",
 }
 
+# 白话→中医术语 / 方剂名 映射（参考 colloquial-questions.md + symptom-index.md）
+# 用户说"手脚冰凉"能映射到"四逆汤""当归四逆汤""少阴"等核心术语
+COLLOQUIAL_TO_TERMS = {
+    # 寒热类
+    "手脚冰凉": ["四逆", "当归四逆", "少阴", "厥阴", "四逆汤", "脉微"],
+    "手脚冰冷": ["四逆", "少阴", "脉微", "四逆汤"],
+    "怕冷": ["少阴", "阳虚", "四逆", "麻黄附子细辛汤", "当归四逆"],
+    "畏寒": ["少阴", "阳虚", "附子"],
+    "发热": ["太阳", "阳明", "少阳", "桂枝汤", "白虎", "小柴胡"],
+    "发烧": ["太阳", "阳明", "桂枝汤", "麻黄汤", "白虎"],
+    # 疼痛类
+    "头痛": ["太阳", "川芎", "葛根", "吴茱萸"],
+    "偏头痛": ["少阳", "小柴胡", "川芎"],
+    "胃痛": ["建中", "理中", "吴茱萸", "黄连"],
+    "肚子痛": ["建中", "理中", "承气", "芍药甘草"],
+    "腰痛": ["肾着", "真武", "附子", "肾气丸"],
+    "关节痛": ["桂枝芍药知母", "乌头汤", "当归四逆", "白术附子"],
+    "经痛": ["温经", "当归四逆", "芍药甘草", "吴茱萸"],
+    # 呼吸类
+    "咳嗽": ["小青龙", "麻黄", "麦门冬", "桔梗", "射干麻黄"],
+    "气喘": ["小青龙", "麻黄附子细辛", "肾气丸"],
+    "哮喘": ["小青龙", "射干麻黄", "肾气丸"],
+    "鼻塞": ["葛根汤", "小青龙", "麻黄附子细辛"],
+    # 消化类
+    "拉肚子": ["理中", "四逆", "五苓散", "葛根芩连", "下利"],
+    "腹泻": ["理中", "四逆", "下利", "太阴"],
+    "便秘": ["承气", "麻子仁丸", "脾约", "大黄"],
+    "胃酸": ["建中", "黄连", "吴茱萸"],
+    # 心血管
+    "心悸": ["炙甘草", "桂枝甘草", "真武", "苓桂术甘"],
+    "胸闷": ["枳实薤白", "瓜蒌薤白", "四逆"],
+    "高血压": ["建瓴", "镇肝", "大柴胡", "柴胡加龙牡"],
+    "心脏病": ["炙甘草", "真武", "四逆", "苓桂术甘"],
+    # 慢性病
+    "糖尿病": ["白虎", "肾气丸", "真武", "瓜蒌瞿麦"],
+    "肾衰竭": ["真武", "四逆", "肾气丸", "猪苓汤"],
+    "肝硬化": ["四逆", "小柴胡", "鳖甲煎丸", "十枣"],
+    "腹水": ["十枣", "真武", "甘遂半夏", "己椒苈黄"],
+    "癌症": ["小柴胡", "四逆", "大承气", "抵当", "桂枝茯苓"],
+    "肿瘤": ["桂枝茯苓", "抵当", "大黄蟅虫", "小柴胡"],
+    # 皮肤
+    "湿疹": ["麻黄连翘赤小豆", "消风散", "当归拈痛"],
+    "痒": ["麻黄", "消风", "荆芥连翘"],
+    # 妇科
+    "月经不调": ["温经", "当归芍药", "四物", "小柴胡"],
+    "不孕": ["温经", "肾气丸", "艾附暖宫", "当归芍药"],
+    # 神志
+    "失眠": ["黄连阿胶", "酸枣仁", "柴胡加龙牡", "栀子豉"],
+    "焦虑": ["柴胡加龙牡", "半夏厚朴", "甘麦大枣", "百合"],
+    "抑郁": ["柴胡加龙牡", "半夏厚朴", "甘麦大枣", "百合地黄"],
+    "癫痫": ["柴胡加龙牡", "风引汤", "桂枝加葛根", "大承气"],
+}
+
 
 def load_cases() -> List[Dict]:
     """
@@ -67,20 +120,32 @@ def load_cases() -> List[Dict]:
     with open(cases_file, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # 1. 解析表格行
+    # 1. 解析表格行（支持两种表头：3列 医案号/日期/疾病 和 6列 医案号/日期/疾病/六经/方剂/摘要）
     case_pattern = re.compile(
-        r"^\|\s*(?P<id>[\d-]+)\s*\|\s*(?P<date>\d{4}-\d{2}-\d{2}|—)\s*\|\s*(?P<disease>[^|]+)\s*\|",
+        r"^\|\s*(?P<id>[\d-]+|\.{3})\s*\|\s*(?P<date>\d{4}-\d{2}-\d{2}|—|\.{3})\s*\|"
+        r"\s*(?P<disease>[^|]+?)\s*\|"
+        r"(?:\s*(?P<six_channel>[^|]*?)\s*\|"
+        r"\s*(?P<formula>[^|]*?)\s*\|"
+        r"\s*(?P<summary>[^|]*?)\s*\|)?",
         re.MULTILINE
     )
 
     for match in case_pattern.finditer(content):
+        # 跳过表头行 / 分隔行 / 统计行
+        id_val = match.group("id").strip()
+        if id_val in ("医案号", "...", "—") or "..." in id_val:
+            continue
+        # 跳过 "共 X 个" 这样的统计行
+        disease_val = match.group("disease").strip()
+        if "共" in disease_val and "个" in disease_val:
+            continue
         case = {
-            "id": match.group("id").strip(),
+            "id": id_val,
             "date": match.group("date").strip(),
-            "disease": match.group("disease").strip(),
-            "six_channel": "",
-            "formula": "",
-            "summary": "",
+            "disease": disease_val,
+            "six_channel": (match.group("six_channel") or "").strip() if match.group("six_channel") else "",
+            "formula": (match.group("formula") or "").strip() if match.group("formula") else "",
+            "summary": (match.group("summary") or "").strip() if match.group("summary") else "",
         }
         cases.append(case)
 
@@ -91,11 +156,76 @@ def load_cases() -> List[Dict]:
         re.MULTILINE
     )
 
-    # 3. 也直接存储整篇文档供全文搜索用
+    # 3. 按章节切分：每条 case 只在自己所属分类的全文里搜
+    # （避免 26 条 case 都共享同一份 8000 字全文导致误命中）
+    section_chunks = []
+    current_section = ""
+    current_title = ""
+    for line in content.split("\n"):
+        if line.startswith("## "):
+            current_title = line.strip("# ").strip()
+            current_section = line + "\n"
+        elif line.startswith("# "):
+            current_title = line.strip("# ").strip()
+            current_section = line + "\n"
+        else:
+            current_section += line + "\n"
+        section_chunks.append((current_title, current_section))
+
     for case in cases:
-        case["full_text"] = content
+        # 用"癌症/心血管/代谢/自身免疫/神经/其他"做粗匹配
+        disease = case.get("disease", "")
+        section_text = current_section  # 默认用最后一个章节（其他/补充）
+        for title, chunk in section_chunks:
+            # 标题包含疾病关键分类
+            if any(kw in title for kw in [
+                "癌症", "心血管", "代谢", "自身免疫", "神经", "其他", "医案"
+            ]):
+                # 判断本 case 属于哪个章节
+                if title.startswith("一、癌症") and any(k in disease for k in [
+                    "癌", "瘤", "白血病", "血癌", "淋巴", "舌", "骨", "脑"
+                ]):
+                    section_text = chunk
+                    break
+                elif title.startswith("二、心血管") and any(k in disease for k in [
+                    "心脏", "高血压", "中风", "动脉", "心脏肥大", "心瓣"
+                ]):
+                    section_text = chunk
+                    break
+                elif title.startswith("三、代谢") and any(k in disease for k in [
+                    "糖尿病", "肾衰", "腹水", "肝硬化", "肾", "肝"
+                ]):
+                    section_text = chunk
+                    break
+                elif title.startswith("四、自身免疫") and any(k in disease for k in [
+                    "类风湿", "红斑狼疮", "风湿", "免疫"
+                ]):
+                    section_text = chunk
+                    break
+                elif title.startswith("五、神经") and any(k in disease for k in [
+                    "癫痫", "脑瘤", "帕金森", "神经", "精神", "智障"
+                ]):
+                    section_text = chunk
+                    break
+        case["full_text"] = section_text
 
     return cases
+
+
+def expand_colloquial(keywords: List[str]) -> List[Tuple[str, int]]:
+    """
+    把白话关键词展开为（展开后词, 权重衰减）的列表
+    返回 [("原词", 1.0), ("展开词1", 0.5), ("展开词2", 0.3), ...]
+    """
+    expanded = []
+    for kw in keywords:
+        expanded.append((kw, 1.0))  # 原词全权重
+        if kw in COLLOQUIAL_TO_TERMS:
+            # 每个展开词按位置衰减
+            for i, term in enumerate(COLLOQUIAL_TO_TERMS[kw]):
+                decay = 0.5 if i == 0 else (0.3 if i == 1 else 0.15)
+                expanded.append((term, decay))
+    return expanded
 
 
 def score_case(case: Dict, keywords: List[str]) -> Tuple[int, List[str]]:
@@ -117,21 +247,25 @@ def score_case(case: Dict, keywords: List[str]) -> Tuple[int, List[str]]:
         case.get("full_text", ""),  # 全文搜索
     ]).lower()
 
-    for kw in keywords:
+    # 展开白话关键词
+    expanded_kws = expand_colloquial(keywords)
+
+    for kw, weight in expanded_kws:
         kw_lower = kw.lower()
         if kw_lower in searchable_text:
-            matched.append(kw)
-            # 按匹配位置给权重
+            if weight == 1.0:  # 原词匹配，记录到 matched
+                matched.append(kw)
+            # 按匹配位置给权重（再乘以白话展开的衰减）
             if case.get("disease", "").lower() == kw_lower:
-                score += WEIGHTS["disease"]
+                score += int(WEIGHTS["disease"] * weight)
             elif case.get("formula", "").lower() == kw_lower:
-                score += WEIGHTS["formula"]
+                score += int(WEIGHTS["formula"] * weight)
             elif case.get("summary", "").lower().find(kw_lower) >= 0:
-                score += WEIGHTS["desc"]
+                score += int(WEIGHTS["desc"] * weight)
             else:
-                score += WEIGHTS["text"]
+                score += max(1, int(WEIGHTS["text"] * weight))
 
-    # 全部关键词都命中，加分
+    # 全部原词都命中，加分
     if len(matched) == len(keywords):
         score += WEIGHTS["exact_match"]
 
@@ -264,6 +398,13 @@ def main():
 
         if scored_cases and not top_cases:
             print("⚠️ 没有任何医案命中。试试其他关键词。")
+        elif not scored_cases:
+            # 数据局限提示
+            print("💡 提示：本检索基于 cases-classified.md（245 个倪师大症医案）。")
+            print("   • 失眠/心悸等慢病调理，请参考 references/formula-patterns.md")
+            print("   • 经方方证速查：references/formula-patterns.md")
+            print("   • 辨证分水岭：references/symptom-index.md")
+            print("   • 白话症状→术语映射：references/colloquial-questions.md")
 
 
 if __name__ == "__main__":
