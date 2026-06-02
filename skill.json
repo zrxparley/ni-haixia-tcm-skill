@@ -1,0 +1,35 @@
+{
+  "name": "ni-haixia-tcm",
+  "version": "3.0.0",
+  "description": "倪海厦中医传承 Skill V3.0 - 以倪师体系为核心的中医学习顾问与诊断辅助",
+  "author": "zrxparley",
+  "license": "MIT",
+  "homepage": "https://github.com/zrxparley/ni-haixia-tcm-skill",
+  "repository": "https://github.com/zrxparley/ni-haixia-tcm-skill.git",
+  "platforms": ["macos", "linux"],
+  "entry": "SKILL.md",
+  "triggers": [
+    "倪师",
+    "倪海厦",
+    "我要学中医",
+    "学中医",
+    "中医诊断",
+    "中医研究",
+    "倪海厦会怎么看",
+    "经方思维"
+  ],
+  "modes": ["study", "diagnosis"],
+  "files": {
+    "references": 25,
+    "templates": 5,
+    "scripts": 1
+  },
+  "tags": [
+    "tcm",
+    "chinese-medicine",
+    "ni-haixia",
+    "education",
+    "diagnosis",
+    "jingfang"
+  ]
+}
